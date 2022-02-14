@@ -13,6 +13,9 @@
 
         // Show hidden menu when the css classes have been properly specified
         this.navigationMenu.removeAttribute('hidden');
+
+        // add onclick listeners when clicking on a version or language
+        _prepareOnSwitcherClick();
     });
 
     /**
@@ -73,5 +76,114 @@
              header.classList.remove('o_header_scrolled');
          }
      };
+
+    const _prepareOnSwitcherClick = () => {
+        [...document.getElementsByClassName('dropdown-item')].
+            filter(i => (i.tagName === "A" && i.getAttribute("href"))).
+            forEach(dropdownItem => {
+                dropdownItem.addEventListener("click", e => {
+                    _findClosestValidUrl(dropdownItem.getAttribute("href"));
+                });
+            });
+    };
+
+    /**
+     * Test url and find best alternative if not available
+     * Test order:
+     * 1. /documentation/15.0/fr/administration/install/install.html
+     * 2. /documentation/15.0/administration/install/install.html
+     * 3. /documentation/15.0/fr/administration/install.html
+     * 4. /documentation/15.0/administration/install.html
+     * 5. /documentation/15.0/fr/administration.html
+     * 6. /documentation/15.0/administration.html
+     * 7. /documentation/15.0/fr/
+     * 8. /documentation/15.0/
+     * 9. /documentation/
+     */
+    const _findClosestValidUrl = (url) => {
+        const fragments = url.split("/");
+        let originalPath = "";
+        let version = "";
+        let language = "";
+        for (let f of fragments.reverse()){
+            if (f.match(/((^\d{2}\.\d$)|(^saas\-\d{2}.\d$)|(^master$))/)) {
+                version = f;
+                break;
+            } else if (f.match(/((^[a-z]{2}_[A-Z]{2})$|^([a-z]{2})$)/)) {
+                language = f;
+            } else {
+                originalPath = (originalPath ? f + "/" + originalPath : f);
+            }
+        }
+        const urls = [];
+        const paths = originalPath.split("/");
+
+        while (paths.length) {
+            if (!paths[paths.length-1].endsWith(".html"))
+                paths[paths.length-1] += ".html";
+            
+            if (version && language)
+                // -> 15.0/fr/administration.html
+                // -> 15.0/administration.html
+                urls.push(
+                    url.replace(version + "/" + language + "/" + originalPath,
+                                version + "/" + language + "/" + paths.join("/")),
+                    url.replace(version + "/" + language + "/" + originalPath,
+                                version + "/" + paths.join("/")));
+            else if (version && !language)
+                // -> 15.0/administration.html
+                urls.push(
+                    url.replace(version + "/" + originalPath,
+                                version + "/" + paths.join("/")));
+            else if (!version && !language)
+                // -> administration.html
+                urls.push(
+                    url.replace(originalPath,
+                                paths.join("/")));
+
+            paths.pop();
+        }
+
+        if (version && language)
+            // -> 15.0/index.html
+            // -> index.html
+            urls.push(
+                url.replace(version + "/" + language + "/" + originalPath,
+                            version + "/index.html"),
+                url.replace(version + "/" + language + "/" + originalPath,
+                            "index.html"));
+        else if (version && !language)
+            // -> index.html
+            urls.push(
+                url.replace(version + "/" + originalPath,
+                            "index.html"));
+        else if (!version && !language)
+            // -> index.html
+            urls.push(
+                url.replace(originalPath,
+                            "index.html"));
+
+        _testFetchUrl(urls);
+    };
+
+    const _testFetchUrl = (urls) => {
+        const url = urls.shift();
+        if (urls.length == 0 || url.startsWith("file:///")) {
+            window.location.href = url;
+            return;
+        }
+
+        fetch(url).then(resp => {
+            if (resp.ok) {
+                // success, navigate
+                window.location.href = url;
+            } else {
+                // 404, try next one
+                _testFetchUrl(urls);
+            }
+        });
+    };
+
+
 
 })();
